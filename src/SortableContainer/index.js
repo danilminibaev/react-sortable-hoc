@@ -1,41 +1,47 @@
 import * as React from 'react';
-import PropTypes from 'prop-types';
-import {findDOMNode} from 'react-dom';
-import invariant from 'invariant';
-
-import Manager from '../Manager';
-import {isSortableHandle} from '../SortableHandle';
 
 import {
+  NodeType,
   cloneNode,
   closest,
   events,
-  getScrollingParent,
   getContainerGridGap,
   getEdgeOffset,
   getElementMargin,
   getLockPixelOffsets,
   getPosition,
+  getScrollAdjustedBoundingClientRect,
+  getScrollingParent,
+  getTargetIndex,
   isTouchEvent,
   limit,
-  NodeType,
   omit,
   provideDisplayName,
   setInlineStyles,
   setTransitionDuration,
   setTranslate3d,
-  getTargetIndex,
-  getScrollAdjustedBoundingClientRect,
 } from '../utils';
-
-import AutoScroller from '../AutoScroller';
+import PropTypes, {element} from 'prop-types';
 import {
+  defaultKeyCodes,
   defaultProps,
   omittedProps,
   propTypes,
   validateProps,
-  defaultKeyCodes,
 } from './props';
+import {
+  getNodeNeighboursToMoveRightDown,
+  getTranslateOnNodesMovingRightDown,
+  getUpdatedOffsets,
+  isNodeOutOfRightBorder,
+  onNodeDownForward,
+} from './helpers';
+
+import AutoScroller from '../AutoScroller';
+import Manager from '../Manager';
+import {findDOMNode} from 'react-dom';
+import invariant from 'invariant';
+import {isSortableHandle} from '../SortableHandle';
 
 export default function sortableContainer(
   WrappedComponent,
@@ -457,6 +463,7 @@ export default function sortableContainer(
       }
 
       this.updateHelperPosition(event);
+      // this.animateNodesUpdated();
       this.animateNodes();
       this.autoscroll();
 
@@ -520,7 +527,7 @@ export default function sortableContainer(
         // Clear the cached offset/boundingClientRect
         node.edgeOffset = null;
         node.boundingClientRect = null;
-
+        //console.log('Remove the transforms / transitions');
         // Remove the transforms / transitions
         setTranslate3d(el, null);
         setTransitionDuration(el, null);
@@ -632,12 +639,18 @@ export default function sortableContainer(
         top: this.offsetEdge.top + this.translate.y + containerScrollDelta.top,
       };
       const {isKeySorting} = this.manager;
-
       const prevIndex = this.newIndex;
       this.newIndex = null;
 
+      // generate function
+      const getTranslateNodeDownForward = onNodeDownForward(
+        nodes[this.index].edgeOffset,
+        this.marginOffset,
+      );
+
       for (let i = 0, len = nodes.length; i < len; i++) {
-        const {node} = nodes[i];
+        const nodeObject = nodes[i];
+        const {node} = nodeObject;
         const {index} = node.sortableInfo;
         const width = node.offsetWidth;
         const height = node.offsetHeight;
@@ -653,8 +666,8 @@ export default function sortableContainer(
           isKeySorting && (index < this.index && index >= prevIndex);
 
         const translate = {
-          x: 0,
-          y: 0,
+          x: (nodes[i].translate && nodes[i].translate.x) || 0,
+          y: (nodes[i].translate && nodes[i].translate.y) || 0,
         };
         let {edgeOffset} = nodes[i];
 
@@ -709,6 +722,11 @@ export default function sortableContainer(
           setTransitionDuration(node, transitionDuration);
         }
 
+        // so what we knon now:
+        // marginOffset - gap between elements by X,Y
+        // edgeOffset - distnace from left and top sides of the container
+        // --- each element has it
+
         if (this.axis.x) {
           if (this.axis.y) {
             // Calculations for a grid setup
@@ -725,18 +743,54 @@ export default function sortableContainer(
               // If the current node is to the left on the same row, or above the node that's being dragged
               // then move it to the right
               translate.x = this.width + this.marginOffset.x;
+
+              // if the element is out from the container borders to the right ->
               if (
-                edgeOffset.left + translate.x >
-                this.containerBoundingRect.width - offset.width
+                isNodeOutOfRightBorder(node, this.container, {
+                  translate,
+                  offset,
+                  edgeOffset,
+                })
               ) {
+                //  console.log(
+                //   node.innerText,
+                //   ' IS OUT OF RIGHT BORDERS OF THE CONTAINER',
+                // );
                 // If it moves passed the right bounds, then animate it to the first position of the next row.
                 // We just use the offset of the next node to calculate where to move, because that node's original position
                 // is exactly where we want to go
-                if (nextNode) {
-                  translate.x = nextNode.edgeOffset.left - edgeOffset.left;
-                  translate.y = nextNode.edgeOffset.top - edgeOffset.top;
+                // if (nextNode) {
+                //   translate.x = nextNode.edgeOffset.left - edgeOffset.left;
+                //   translate.y = nextNode.edgeOffset.top - edgeOffset.top;
+                // }
+
+                // getting translate values to this node right and down respectivly
+                const downForwardTranslate = getTranslateNodeDownForward(
+                  nodeObject,
+                );
+                translate.x = downForwardTranslate.x;
+                translate.y = downForwardTranslate.y;
+
+                const affectedNodes = nodes.filter((v, i) => this.index !== i);
+
+                //console.log(`CHECKING NOW NODE ${nodeObject.node.innerText}`);
+                const nodesOnTheRightSideToMove = getNodeNeighboursToMoveRightDown(
+                  nodeObject,
+                  affectedNodes,
+                );
+
+                if (nodesOnTheRightSideToMove.length) {
+                  getTranslateOnNodesMovingRightDown(
+                    nodeObject,
+                    affectedNodes,
+                    this.container,
+                    this.marginOffset,
+                    nodesOnTheRightSideToMove,
+                  );
+                  debugger;
                 }
               }
+
               if (this.newIndex === null) {
                 this.newIndex = index;
               }
@@ -752,67 +806,71 @@ export default function sortableContainer(
             ) {
               // If the current node is to the right on the same row, or below the node that's being dragged
               // then move it to the left
-              translate.x = -(this.width + this.marginOffset.x);
-              if (
-                edgeOffset.left + translate.x <
-                this.containerBoundingRect.left + offset.width
-              ) {
-                // If it moves passed the left bounds, then animate it to the last position of the previous row.
-                // We just use the offset of the previous node to calculate where to move, because that node's original position
-                // is exactly where we want to go
-                if (prevNode) {
-                  translate.x = prevNode.edgeOffset.left - edgeOffset.left;
-                  translate.y = prevNode.edgeOffset.top - edgeOffset.top;
-                }
-              }
-              this.newIndex = index;
+              // translate.x = -(this.width + this.marginOffset.x);
+              // if (
+              //   edgeOffset.left + translate.x <
+              //   this.containerBoundingRect.left + offset.width
+              // ) {
+              //   // If it moves passed the left bounds, then animate it to the last position of the previous row.
+              //   // We just use the offset of the previous node to calculate where to move, because that node's original position
+              //   // is exactly where we want to go
+              //   if (prevNode) {
+              //     translate.x = prevNode.edgeOffset.left - edgeOffset.left;
+              //     translate.y = prevNode.edgeOffset.top - edgeOffset.top;
+              //     //  //console.log('PREV IS', prevNode.node.innerText);
+              //   }
+              // }
+              // this.newIndex = index;
             }
           } else {
-            if (
-              mustShiftBackward ||
-              (index > this.index &&
-                sortingOffset.left + windowScrollDelta.left + offset.width >=
-                  edgeOffset.left)
-            ) {
-              translate.x = -(this.width + this.marginOffset.x);
-              this.newIndex = index;
-            } else if (
-              mustShiftForward ||
-              (index < this.index &&
-                sortingOffset.left + windowScrollDelta.left <=
-                  edgeOffset.left + offset.width)
-            ) {
-              translate.x = this.width + this.marginOffset.x;
-
-              if (this.newIndex == null) {
-                this.newIndex = index;
-              }
-            }
+            // if (
+            //   mustShiftBackward ||
+            //   (index > this.index &&
+            //     sortingOffset.left + windowScrollDelta.left + offset.width >=
+            //       edgeOffset.left)
+            // ) {
+            //   translate.x = -(this.width + this.marginOffset.x);
+            //   this.newIndex = index;
+            // } else if (
+            //   mustShiftForward ||
+            //   (index < this.index &&
+            //     sortingOffset.left + windowScrollDelta.left <=
+            //       edgeOffset.left + offset.width)
+            // ) {
+            //   translate.x = this.width + this.marginOffset.x;
+            //   if (this.newIndex == null) {
+            //     this.newIndex = index;
+            //   }
+            // }
           }
         } else if (this.axis.y) {
-          if (
-            mustShiftBackward ||
-            (index > this.index &&
-              sortingOffset.top + windowScrollDelta.top + offset.height >=
-                edgeOffset.top)
-          ) {
-            translate.y = -(this.height + this.marginOffset.y);
-            this.newIndex = index;
-          } else if (
-            mustShiftForward ||
-            (index < this.index &&
-              sortingOffset.top + windowScrollDelta.top <=
-                edgeOffset.top + offset.height)
-          ) {
-            translate.y = this.height + this.marginOffset.y;
-            if (this.newIndex == null) {
-              this.newIndex = index;
-            }
-          }
+          // NO NEED IN THIS YET
+          // if (
+          //   mustShiftBackward ||
+          //   (index > this.index &&
+          //     sortingOffset.top + windowScrollDelta.top + offset.height >=
+          //       edgeOffset.top)
+          // ) {
+          //   translate.y = -(this.height + this.marginOffset.y);
+          //   this.newIndex = index;
+          // } else if (
+          //   mustShiftForward ||
+          //   (index < this.index &&
+          //     sortingOffset.top + windowScrollDelta.top <=
+          //       edgeOffset.top + offset.height)
+          // ) {
+          //   translate.y = this.height + this.marginOffset.y;
+          //   if (this.newIndex == null) {
+          //     this.newIndex = index;
+          //   }
+          // }
         }
 
         setTranslate3d(node, translate);
-        nodes[i].translate = translate;
+        console.log(translate, nodes[i].translate);
+        nodes[i].translate = nodes[i].translate
+          ? nodes[i].translate
+          : translate;
       }
 
       if (this.newIndex == null) {
@@ -836,6 +894,8 @@ export default function sortableContainer(
           helper: this.helper,
         });
       }
+
+      //console.log('cycle finished');
     }
 
     autoscroll = () => {

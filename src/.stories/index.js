@@ -1,27 +1,39 @@
-import React, {Component} from 'react';
-import PropTypes from 'prop-types';
-import ReactDOM from 'react-dom';
-import {storiesOf} from '@storybook/react';
-import style from './Storybook.scss';
-import {SortableContainer, SortableElement, SortableHandle} from '../index';
-import arrayMove from 'array-move';
-import VirtualList from 'react-tiny-virtual-list';
-import {FixedSizeList, VariableSizeList} from 'react-window';
-import {defaultTableRowRenderer, Column, Table, List} from 'react-virtualized';
 import '!style-loader!css-loader!react-virtualized/styles.css';
-import Infinite from 'react-infinite';
-import range from 'lodash/range';
-import random from 'lodash/random';
-import classNames from 'classnames';
+
+import {Column, List, Table, defaultTableRowRenderer} from 'react-virtualized';
+import {FixedSizeList, VariableSizeList} from 'react-window';
+import React, {Component} from 'react';
+import {SortableContainer, SortableElement, SortableHandle} from '../index';
 
 import GroupedItems from './grouping-items';
+import Infinite from 'react-infinite';
 import InteractiveElements from './interactive-elements-stress-test';
+import PropTypes from 'prop-types';
+import ReactDOM from 'react-dom';
+import VirtualList from 'react-tiny-virtual-list';
+import arrayMove from 'array-move';
+import classNames from 'classnames';
+import random from 'lodash/random';
+import range from 'lodash/range';
+import {storiesOf} from '@storybook/react';
+import style from './Storybook.scss';
+
+function stringGen(len) {
+  var text = ' ';
+
+  var charset = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+  for (var i = 0; i < len; i++)
+    text += charset.charAt(Math.floor(Math.random() * charset.length));
+
+  return text;
+}
 
 function getItems(count, height) {
   var heights = [65, 110, 140, 65, 90, 65];
-  return range(count).map((value) => {
+  return range(count).map((value, i) => {
     return {
-      value,
+      value: i === 2 || i === 6 ? stringGen(16) + `_[${i}]_` : `[${i}]`,
       height: height == null ? heights[random(0, heights.length - 1)] : height,
     };
   });
@@ -77,6 +89,17 @@ const Item = SortableElement(
   },
 );
 
+function getRandomColor() {
+  var letters = '0123456789ABCDEF';
+  var color = '#';
+  for (var i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
+
+const colors = [...new Array(20).keys()].map(() => getRandomColor());
+
 const SortableList = SortableContainer(
   ({
     className,
@@ -95,6 +118,7 @@ const SortableList = SortableContainer(
           return (
             <Item
               tabbable
+              style={{backgroundColor: colors[index]}}
               key={`item-${value}`}
               disabled={disabled}
               isDisabled={disabled}
@@ -525,10 +549,18 @@ storiesOf('General | Layout / Grid', module)
         <ListWrapper
           component={SortableList}
           axis={'xy'}
-          items={getItems(10, false)}
+          items={getItems(20, false)}
           helperClass={style.stylizedHelper}
-          className={classNames(style.list, style.stylizedList, style.grid)}
-          itemClass={classNames(style.stylizedItem, style.gridItem)}
+          className={classNames(
+            style.list,
+            style.stylizedList,
+            style.customGrid,
+          )}
+          itemClass={classNames(
+            style.stylizedItem,
+            style.gridItem,
+            style.customWidth,
+          )}
         />
       </div>
     );
