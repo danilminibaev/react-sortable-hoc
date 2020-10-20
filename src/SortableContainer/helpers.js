@@ -41,7 +41,6 @@ export const getNodeNeighboursToMoveRightDown = (currentNode, allNodes) => {
     .find((node) => willNodesOverlap(currentNode, node));
 
   if (nodeOverlapped) {
-    debugger;
     return [
       nodeOverlapped,
       ...allNodes
@@ -56,9 +55,9 @@ export const getNodeNeighboursToMoveRightDown = (currentNode, allNodes) => {
   return [];
 };
 
-export const onNodeDownForward = (startOffset, gap) => (nodeToMove) => {
+export const onNodeDownForward = (startOffset, nodeToMove, gap) => {
   const {edgeOffset} = nodeToMove;
-
+  debugger;
   const translate = {
     x: startOffset.left - edgeOffset.left,
     y: startOffset.top - edgeOffset.top,
@@ -68,9 +67,12 @@ export const onNodeDownForward = (startOffset, gap) => (nodeToMove) => {
   nodeToMove.edgeOffset = startOffset;
 
   // considering that the node is now shifted, so as the starting offset for the next one to move
-  startOffset = getUpdatedOffsets(nodeToMove, gap);
+  const nodeOffsets = getUpdatedOffsets(nodeToMove, gap);
 
-  return translate;
+  return {
+    nodeOffsets,
+    translate,
+  };
 };
 
 export const getTranslateOnNodesMovingRightDown = (

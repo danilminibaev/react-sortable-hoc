@@ -641,12 +641,20 @@ export default function sortableContainer(
       const {isKeySorting} = this.manager;
       const prevIndex = this.newIndex;
       this.newIndex = null;
+      // const NN =
+      //   nodes &&
+      //   nodes.find(
+      //     ({node}) =>
+      //       getEdgeOffset(node, this.container).top >
+      //       getEdgeOffset(nodes[this.index].node, this.container).top,
+      //   );
 
-      // generate function
-      const getTranslateNodeDownForward = onNodeDownForward(
-        nodes[this.index].edgeOffset,
-        this.marginOffset,
-      );
+      // // for moving nodes down right
+      // let startOffset = NN && getEdgeOffset(NN.node, this.container);
+
+      // console.log('OFFSET', startOffset);
+
+      let startOffset = null;
 
       for (let i = 0, len = nodes.length; i < len; i++) {
         const nodeObject = nodes[i];
@@ -756,6 +764,7 @@ export default function sortableContainer(
                 //   node.innerText,
                 //   ' IS OUT OF RIGHT BORDERS OF THE CONTAINER',
                 // );
+
                 // If it moves passed the right bounds, then animate it to the first position of the next row.
                 // We just use the offset of the next node to calculate where to move, because that node's original position
                 // is exactly where we want to go
@@ -763,14 +772,24 @@ export default function sortableContainer(
                 //   translate.x = nextNode.edgeOffset.left - edgeOffset.left;
                 //   translate.y = nextNode.edgeOffset.top - edgeOffset.top;
                 // }
+                const nodeDownOffset =
+                  startOffset ||
+                  nodes.find(
+                    (nn) => nn.edgeOffset.top > nodeObject.edgeOffset.top,
+                  ).edgeOffset;
 
                 // getting translate values to this node right and down respectivly
-                const downForwardTranslate = getTranslateNodeDownForward(
+                const {
+                  translate: downForwardTranslate,
+                  nodeOffsets,
+                } = onNodeDownForward(
+                  nodeDownOffset,
                   nodeObject,
+                  this.marginOffset,
                 );
                 translate.x = downForwardTranslate.x;
                 translate.y = downForwardTranslate.y;
-
+                startOffset = nodeOffsets;
                 const affectedNodes = nodes.filter((v, i) => this.index !== i);
 
                 //console.log(`CHECKING NOW NODE ${nodeObject.node.innerText}`);
@@ -787,7 +806,6 @@ export default function sortableContainer(
                     this.marginOffset,
                     nodesOnTheRightSideToMove,
                   );
-                  debugger;
                 }
               }
 
