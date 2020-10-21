@@ -33,8 +33,9 @@ import {
   getNodeNeighboursToMoveRightDown,
   getTranslateOnNodesMovingRightDown,
   getUpdatedOffsets,
-  isNodeOutOfRightBorder,
   onNodeDownForward,
+  willNodeMovePastLeftBorder,
+  willNodeMovePastRightBorder,
 } from './helpers';
 
 import AutoScroller from '../AutoScroller';
@@ -641,18 +642,6 @@ export default function sortableContainer(
       const {isKeySorting} = this.manager;
       const prevIndex = this.newIndex;
       this.newIndex = null;
-      // const NN =
-      //   nodes &&
-      //   nodes.find(
-      //     ({node}) =>
-      //       getEdgeOffset(node, this.container).top >
-      //       getEdgeOffset(nodes[this.index].node, this.container).top,
-      //   );
-
-      // // for moving nodes down right
-      // let startOffset = NN && getEdgeOffset(NN.node, this.container);
-
-      // console.log('OFFSET', startOffset);
 
       let startOffset = null;
 
@@ -677,6 +666,7 @@ export default function sortableContainer(
           x: (nodes[i].translate && nodes[i].translate.x) || 0,
           y: (nodes[i].translate && nodes[i].translate.y) || 0,
         };
+
         let {edgeOffset} = nodes[i];
 
         // If we haven't cached the node's offsetTop / offsetLeft value
@@ -754,51 +744,56 @@ export default function sortableContainer(
 
               // if the element is out from the container borders to the right ->
               if (
-                isNodeOutOfRightBorder(node, this.container, {
+                willNodeMovePastRightBorder(node, this.container, {
                   translate,
                   offset,
                   edgeOffset,
                 })
               ) {
-                //  console.log(
-                //   node.innerText,
-                //   ' IS OUT OF RIGHT BORDERS OF THE CONTAINER',
-                // );
-
                 // If it moves passed the right bounds, then animate it to the first position of the next row.
                 // We just use the offset of the next node to calculate where to move, because that node's original position
                 // is exactly where we want to go
-                // if (nextNode) {
-                //   translate.x = nextNode.edgeOffset.left - edgeOffset.left;
-                //   translate.y = nextNode.edgeOffset.top - edgeOffset.top;
-                // }
-                const nodeDownOffset =
-                  startOffset ||
+
+                // node we rely on in translating
+                const nodeDown =
+                  (startOffset && {edgeOffset: startOffset}) ||
                   nodes.find(
-                    (nn) => nn.edgeOffset.top > nodeObject.edgeOffset.top,
-                  ).edgeOffset;
+                    (el) => el.edgeOffset.top > nodeObject.edgeOffset.top,
+                  ) ||
+                  nodes[nodes.length - 1];
 
                 // getting translate values to this node right and down respectivly
-                const {
-                  translate: downForwardTranslate,
-                  nodeOffsets,
-                } = onNodeDownForward(
-                  nodeDownOffset,
+                const translateDownForward = onNodeDownForward(
+                  nodeDown.edgeOffset,
                   nodeObject,
                   this.marginOffset,
                 );
-                translate.x = downForwardTranslate.x;
-                translate.y = downForwardTranslate.y;
-                startOffset = nodeOffsets;
+
+                translate.x = translateDownForward.x;
+                translate.y = translateDownForward.y;
+
+                // update offsets after(!) the translate was calculated
+                nodeObject.edgeOffset = nodeDown.edgeOffset;
+                nodeObject.translate = translate;
+
+                // update offsets value for moving node element down below
+                startOffset = getUpdatedOffsets(
+                  nodeObject,
+                  {
+                    translate,
+                  },
+                  this.marginOffset,
+                );
+
                 const affectedNodes = nodes.filter((v, i) => this.index !== i);
 
-                //console.log(`CHECKING NOW NODE ${nodeObject.node.innerText}`);
                 const nodesOnTheRightSideToMove = getNodeNeighboursToMoveRightDown(
                   nodeObject,
                   affectedNodes,
                 );
 
                 if (nodesOnTheRightSideToMove.length) {
+                  debugger;
                   getTranslateOnNodesMovingRightDown(
                     nodeObject,
                     affectedNodes,
@@ -824,21 +819,24 @@ export default function sortableContainer(
             ) {
               // If the current node is to the right on the same row, or below the node that's being dragged
               // then move it to the left
-              // translate.x = -(this.width + this.marginOffset.x);
-              // if (
-              //   edgeOffset.left + translate.x <
-              //   this.containerBoundingRect.left + offset.width
-              // ) {
-              //   // If it moves passed the left bounds, then animate it to the last position of the previous row.
-              //   // We just use the offset of the previous node to calculate where to move, because that node's original position
-              //   // is exactly where we want to go
-              //   if (prevNode) {
-              //     translate.x = prevNode.edgeOffset.left - edgeOffset.left;
-              //     translate.y = prevNode.edgeOffset.top - edgeOffset.top;
-              //     //  //console.log('PREV IS', prevNode.node.innerText);
-              //   }
-              // }
-              // this.newIndex = index;
+              translate.x = -(this.width + this.marginOffset.x);
+              if (
+                willNodeMovePastLeftBorder(node, this.container, {
+                  translate,
+                  offset,
+                  edgeOffset,
+                })
+              ) {
+                // If it moves passed the left bounds, then animate it to the last position of the previous row.
+                // We just use the offset of the previous node to calculate where to move, because that node's original position
+                // is exactly where we want to go
+                // if (prevNode) {
+                //   translate.x = prevNode.edgeOffset.left - edgeOffset.left;
+                //   translate.y = prevNode.edgeOffset.top - edgeOffset.top;
+                //   //  //console.log('PREV IS', prevNode.node.innerText);
+                // }
+              }
+              this.newIndex = index;
             }
           } else {
             // if (
@@ -862,7 +860,8 @@ export default function sortableContainer(
             // }
           }
         } else if (this.axis.y) {
-          // NO NEED IN THIS YET
+          // NO NEED IN THIS
+          // FOR OUR USE CASE AT LEAST
           // if (
           //   mustShiftBackward ||
           //   (index > this.index &&
@@ -883,12 +882,12 @@ export default function sortableContainer(
           //   }
           // }
         }
-
-        setTranslate3d(node, translate);
-        console.log(translate, nodes[i].translate);
-        nodes[i].translate = nodes[i].translate
-          ? nodes[i].translate
-          : translate;
+        setTranslate3d(node, nodes[i].translate || translate);
+        // setTranslate3d(node, translate);
+        // console.log(translate, nodes[i].translate);
+        // nodes[i].translate = translate;
+        //   ? nodes[i].translate
+        //   : translate;
       }
 
       if (this.newIndex == null) {

@@ -1,12 +1,61 @@
-export const isNodeOutOfRightBorder = (node, container, transitionData) => {
+let lol = {};
+// by X
+export const willNodeMovePastRightBorder = (
+  node,
+  container,
+  transitionData,
+) => {
   const {edgeOffset, translate} = transitionData;
+  if (
+    edgeOffset.left + translate.x + node.clientWidth >=
+    container.offsetWidth
+  ) {
+    if (!lol[`${node.innerText}`]) {
+      lol = {...lol, ...{[`${node.innerText}`]: 1}};
+    } else {
+      lol[`${node.innerText}`] = lol[`${node.innerText}`] + 1;
+    }
+
+    if (lol[`${node.innerText}`] === 1 || lol[`${node.innerText}`] === 10) {
+      console.log(
+        node.innerText,
+        '~~~~~~',
+        lol[`${node.innerText}`],
+        translate,
+      );
+    }
+    // console.log(
+    //   'we can expect node',
+    //   node.innerText,
+    //   ' to be moved out of the right border',
+    // );
+  }
   return (
-    edgeOffset.left + translate.x + node.clientWidth > container.offsetWidth
+    edgeOffset.left + translate.x + node.clientWidth >= container.offsetWidth
   );
 };
 
-export const getUpdatedOffsets = (nodeObject, gap, direction = 'x') => {
-  const {node, translate} = nodeObject;
+export const willNodeMovePastLeftBorder = (node, container, transitionData) => {
+  const {edgeOffset, translate} = transitionData;
+  // if (edgeOffset.left + translate.x <= 0) {
+  //   debugger;
+  //   console.log(
+  //     'we can expect node',
+  //     node.innerText,
+  //     ' to be moved out of the left border',
+  //   );
+  // }
+  return edgeOffset.left + translate.x <= 0;
+};
+
+export const getUpdatedOffsets = (
+  nodeObject,
+  transitionData,
+  gap,
+  direction = 'x',
+) => {
+  const {node} = nodeObject;
+  const {translate} = transitionData;
   const extraX = direction.includes('x') ? node.offsetWidth + gap.x : 0;
   const extraY = direction.includes('y') ? node.offsetHeight + gap.y : 0;
 
@@ -55,24 +104,37 @@ export const getNodeNeighboursToMoveRightDown = (currentNode, allNodes) => {
   return [];
 };
 
-export const onNodeDownForward = (startOffset, nodeToMove, gap) => {
+let i = {};
+
+export const onNodeDownForward = (targetOffset, nodeToMove, gap) => {
   const {edgeOffset} = nodeToMove;
-  debugger;
+
   const translate = {
-    x: startOffset.left - edgeOffset.left,
-    y: startOffset.top - edgeOffset.top,
+    x: targetOffset.left - edgeOffset.left,
+    y: targetOffset.top - edgeOffset.top,
   };
 
-  nodeToMove.translate = translate;
-  nodeToMove.edgeOffset = startOffset;
+  // nodeToMove.translate = translate;
+  // nodeToMove.edgeOffset = targetOffset;
 
-  // considering that the node is now shifted, so as the starting offset for the next one to move
-  const nodeOffsets = getUpdatedOffsets(nodeToMove, gap);
+  // // considering that the node is now shifted, so as the starting offset for the next one to move
+  // const nextPositionOffset = getUpdatedOffsets(nodeToMove, gap);
 
-  return {
-    nodeOffsets,
-    translate,
-  };
+  if (!i[`${nodeToMove.node.innerText}`]) {
+    i = {...i, ...{[`${nodeToMove.node.innerText}`]: 1}};
+  } else {
+    i[`${nodeToMove.node.innerText}`] = i[`${nodeToMove.node.innerText}`] + 1;
+  }
+
+  // console.log(
+  //   `NODE ${
+  //     nodeToMove.node.innerText
+  //   } will be moved down and forward in relation to ${JSON.stringify(
+  //     targetOffset,
+  //   )} \n for the time:${i[`${nodeToMove.node.innerText}`]}`,
+  // );
+
+  return translate;
 };
 
 export const getTranslateOnNodesMovingRightDown = (
@@ -88,27 +150,54 @@ export const getTranslateOnNodesMovingRightDown = (
     ),
   );
 
+  if (nodesToShift.length) {
+  }
+
   for (let i = 0, len = nodesToShift.length; i < len; i++) {
     const newOffsets =
       i === 0
-        ? getUpdatedOffsets(startPointNode, gap)
-        : getUpdatedOffsets(nodesToShift[i - 1], gap);
+        ? getUpdatedOffsets(
+            startPointNode,
+            {
+              translate: startPointNode.translate
+                ? startPointNode.translate
+                : {x: 0, y: 0},
+            },
+            gap,
+          )
+        : getUpdatedOffsets(
+            nodesToShift[i - 1],
+            {
+              translate: nodesToShift[i - 1].translate
+                ? nodesToShift[i - 1].translate
+                : {x: 0, y: 0},
+            },
+            gap,
+          );
 
     const extraTranslate = {
       x: newOffsets.left - nodesToShift[i].edgeOffset.left,
       y: newOffsets.top - nodesToShift[i].edgeOffset.top,
     };
 
+    const {x: XX, y: YY} = nodesToShift[i].translate
+      ? nodesToShift[i].translate
+      : {x: 0, y: 0};
+
     const nodeUpdatedTranslate = {
-      x: nodesToShift[i].translate.x + extraTranslate.x,
-      y: nodesToShift[i].translate.y + extraTranslate.y,
+      x: XX + extraTranslate.x,
+      y: YY + extraTranslate.y,
     };
 
     nodesToShift[i].edgeOffset = newOffsets;
     nodesToShift[i].translate = nodeUpdatedTranslate;
 
     if (
-      isNodeOutOfRightBorder(nodesToShift[i].node, container, nodesToShift[i])
+      willNodeMovePastRightBorder(
+        nodesToShift[i].node,
+        container,
+        nodesToShift[i],
+      )
     ) {
       const nextRowOffset =
         i + 1 < len
@@ -126,6 +215,7 @@ export const getTranslateOnNodesMovingRightDown = (
       };
 
       nodesToShift[i].edgeOffset = nextRowOffset;
+      debugger;
     }
   }
 };

@@ -549,7 +549,7 @@ storiesOf('General | Layout / Grid', module)
         <ListWrapper
           component={SortableList}
           axis={'xy'}
-          items={getItems(20, false)}
+          items={getItems(10, false)}
           helperClass={style.stylizedHelper}
           className={classNames(
             style.list,
